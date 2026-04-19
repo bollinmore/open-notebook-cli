@@ -4,10 +4,13 @@ import json
 import requests
 import sys
 
+# 基礎 API 設定
+BASE_URL = "http://localhost:5055/api"
+
 def list_notebooks():
     """列出所有筆記本的 ID 與名稱"""
     try:
-        response = requests.get("http://localhost:5055/api/notebooks")
+        response = requests.get(f"{BASE_URL}/notebooks")
         if response.status_code == 200:
             notebooks = response.json()
             print(f"{'ID':<30} | {'Name'}")
@@ -21,13 +24,14 @@ def list_notebooks():
 
 def upload_files(directory, notebook_id, enable_insights):
     """上傳目錄下的檔案到指定筆記本"""
-    url = "http://localhost:5055/api/sources"
+    url = f"{BASE_URL}/sources"
     extensions = ('.pdf', '.txt', '.md')
     
     if not os.path.exists(directory):
         print(f"錯誤: 目錄 {directory} 不存在")
         return
 
+    # 指定的 Transformation IDs
     TRANSFORMATION_IDS = [
         "transformation:r81jle14ok5pqhhaf9v9",
         "transformation:6xjan1bdex95n9qj8fg7",
@@ -35,12 +39,15 @@ def upload_files(directory, notebook_id, enable_insights):
         "transformation:mtjxqc3zc4evy1ph73km",
         "transformation:zjc4edn6oxpq7xhr3752"
     ]
+    # 預設不執行，除非 enable_insights 為 True
     transformations = TRANSFORMATION_IDS if enable_insights else []
 
     for filename in os.listdir(directory):
         if filename.lower().endswith(extensions):
             file_path = os.path.join(directory, filename)
+            
             print(f"正在上傳: {filename} (Insights: {'啟用' if enable_insights else '關閉'})...")
+            
             try:
                 with open(file_path, 'rb') as f:
                     files = {'file': (filename, f)}
@@ -51,6 +58,7 @@ def upload_files(directory, notebook_id, enable_insights):
                         'notebooks': json.dumps([notebook_id]),
                         'transformations': json.dumps(transformations)
                     }
+                    
                     response = requests.post(url, data=data, files=files)
                     if response.status_code == 200:
                         print(f"成功: {filename} 已上傳。")
@@ -61,8 +69,7 @@ def upload_files(directory, notebook_id, enable_insights):
 
 def clear_notebook(notebook_id):
     """清除指定筆記本內的所有 Source 並刪除實體檔案"""
-    list_url = f"http://localhost:5055/api/sources?notebook_id={notebook_id}"
-    
+    list_url = f"{BASE_URL}/sources?notebook_id={notebook_id}"
     try:
         # 1. 取得該筆記本內的所有來源
         response = requests.get(list_url)
@@ -76,7 +83,7 @@ def clear_notebook(notebook_id):
             return
 
         print(f"找到 {len(sources)} 個來源，準備開始刪除...")
-
+        
         # 2. 逐一刪除
         for source in sources:
             source_id = source['id']
@@ -84,35 +91,122 @@ def clear_notebook(notebook_id):
             print(f"正在刪除: {title} ({source_id})...")
             
             # 使用 DELETE 端點，並設定 delete_exclusive_sources=true 以刪除實體檔案
-            delete_url = f"http://localhost:5055/api/sources/{source_id}?delete_exclusive_sources=true"
+            delete_url = f"{BASE_URL}/sources/{source_id}?delete_exclusive_sources=true"
             del_resp = requests.delete(delete_url)
             
             if del_resp.status_code == 200:
                 print(f"成功刪除: {title}")
             else:
                 print(f"刪除失敗: {title}，狀態碼: {del_resp.status_code}")
-
     except Exception as e:
         print(f"執行清除時發生錯誤: {e}")
 
+def get_status():
+    """取得系統狀態"""
+    try:
+        auth = requests.get(f"{BASE_URL}/auth/status").json()
+        env = requests.get(f"{BASE_URL}/credentials/env-status").json()
+        print(f"Auth Status: {auth}")
+        print(f"Env Status: {env}")
+    except Exception as e:
+        print(f"無法取得狀態: {e}")
+
+def search_query(query, notebook_id=None, limit=5):
+    """執行知識庫搜尋，支援筆記本篩選"""
+    payload = {"query": query, "limit": limit}
+    # 若有指定 notebook_id，傳遞 context 參數以進行限制
+    if notebook_id:
+        payload["context"] = {"notebook_id": notebook_id}
+        
+    response = requests.post(f"{BASE_URL}/search", json=payload)
+    if response.status_code == 200:
+        results = response.json().get('results', [])
+        for i, res in enumerate(results):
+            print(f"[{i+1}] {res.get('title', '無標題')}")
+    else:
+        print(f"搜尋失敗: {response.text}")
+
+def ask_query(query, notebook_id=None):
+    """直接詢問知識庫問題，修正結構以符合 API 要求並處理串流回應"""
+    # 使用系統註冊的語言模型 ID
+    model_id = "model:jlozhpea95y964fq5tb0"
+    payload = {
+        "question": query,
+        "strategy_model": model_id,
+        "answer_model": model_id,
+        "final_answer_model": model_id
+    }
+    if notebook_id:
+        payload["notebook_id"] = notebook_id
+        
+    # 使用 stream=True 來處理串流
+    response = requests.post(f"{BASE_URL}/search/ask", json=payload, stream=True)
+    
+    if response.status_code == 200:
+        for line in response.iter_lines():
+            if line:
+                line_str = line.decode('utf-8')
+                if line_str.startswith("data: "):
+                    try:
+                        data = json.loads(line_str[6:])
+                        # 處理最終回答內容
+                        if data.get("type") == "answer":
+                            print(data.get("content", ""))
+                    except json.JSONDecodeError:
+                        continue
+    else:
+        print(f"提問失敗 (狀態碼 {response.status_code}): {response.text}")
+
+def chat_execute(session_id, message):
+    """執行聊天"""
+    payload = {"session_id": session_id, "message": message, "context": {}}
+    response = requests.post(f"{BASE_URL}/chat/execute", json=payload)
+    if response.status_code == 200:
+        print(json.dumps(response.json(), indent=2))
+    else:
+        print(f"對話失敗: {response.text}")
+
 def main():
-    parser = argparse.ArgumentParser(description="Open Notebook 批次管理工具")
+    parser = argparse.ArgumentParser(description="Open Notebook CLI")
     subparsers = parser.add_subparsers(dest="command")
 
+    # 列出筆記本指令
     subparsers.add_parser("list", help="列出所有筆記本 ID")
 
+    # 系統狀態指令
+    subparsers.add_parser("status", help="系統狀態")
+    
+    # 上傳指令
     upload_parser = subparsers.add_parser("upload", help="批次上傳檔案")
     upload_parser.add_argument("dir", help="包含檔案的目錄路徑")
     upload_parser.add_argument("notebook_id", help="目標筆記本 ID")
-    upload_parser.add_argument("--enable-insights", action="store_true", help="啟用自動產生 Insights")
+    upload_parser.add_argument("--enable-insights", action="store_true", help="啟用自動產生 Insights (分析時間較長)")
 
+    # 清除指令
     clear_parser = subparsers.add_parser("clear", help="清除指定筆記本內的所有 Source")
     clear_parser.add_argument("notebook_id", help="要清空的筆記本 ID")
+
+    # 搜尋指令
+    search_parser = subparsers.add_parser("search", help="搜尋知識庫")
+    search_parser.add_argument("query", help="搜尋關鍵字")
+    search_parser.add_argument("--notebook", help="指定筆記本 ID", required=False)
+
+    # 詢問指令
+    ask_parser = subparsers.add_parser("ask", help="詢問知識庫問題")
+    ask_parser.add_argument("query", help="問題內容")
+    ask_parser.add_argument("--notebook", help="指定筆記本 ID", required=False)
+    
+    # 對話指令
+    chat_parser = subparsers.add_parser("chat", help="進行對話")
+    chat_parser.add_argument("session_id", help="會話 ID")
+    chat_parser.add_argument("message", help="對話內容")
 
     args = parser.parse_args()
 
     if args.command == "list":
         list_notebooks()
+    elif args.command == "status":
+        get_status()
     elif args.command == "upload":
         upload_files(args.dir, args.notebook_id, args.enable_insights)
     elif args.command == "clear":
@@ -121,6 +215,12 @@ def main():
             clear_notebook(args.notebook_id)
         else:
             print("已取消操作。")
+    elif args.command == "search":
+        search_query(args.query, notebook_id=args.notebook)
+    elif args.command == "ask":
+        ask_query(args.query, notebook_id=args.notebook)
+    elif args.command == "chat":
+        chat_execute(args.session_id, args.message)
     else:
         parser.print_help()
 
