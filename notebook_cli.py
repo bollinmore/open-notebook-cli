@@ -6,6 +6,7 @@ import sys
 
 # 基礎 API 設定
 BASE_URL = "http://localhost:5055/api"
+LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
 
 def list_notebooks():
     """列出所有筆記本的 ID 與名稱"""
@@ -143,19 +144,46 @@ def ask_query(query, notebook_id=None):
     response = requests.post(f"{BASE_URL}/search/ask", json=payload, stream=True)
     
     if response.status_code == 200:
+        print("💡 系統思考中...", end="", flush=True)
         for line in response.iter_lines():
             if line:
                 line_str = line.decode('utf-8')
                 if line_str.startswith("data: "):
                     try:
                         data = json.loads(line_str[6:])
-                        # 處理最終回答內容
+                        # 顯示思考狀態
+                        if data.get("type") == "strategy":
+                            print(".", end="", flush=True)
+                        # 處理最終回答內容，使用 flush=True 強制即時輸出
                         if data.get("type") == "answer":
-                            print(data.get("content", ""))
+                            print(data.get("content", ""), end="", flush=True)
                     except json.JSONDecodeError:
                         continue
+        print() # 結束時換行
     else:
         print(f"提問失敗 (狀態碼 {response.status_code}): {response.text}")
+
+def raw_chat(message):
+    """直接與 LM Studio 串流對話，繞過 Open Notebook 的 Orchestrator"""
+    payload = {
+        "model": "gemma-4-e4b-it",
+        "messages": [{"role": "user", "content": message}],
+        "stream": True
+    }
+    response = requests.post(LM_STUDIO_URL, json=payload, stream=True)
+    if response.status_code == 200:
+        for line in response.iter_lines():
+            if line:
+                line_str = line.decode('utf-8').replace("data: ", "")
+                if line_str == "[DONE]": break
+                try:
+                    data = json.loads(line_str)
+                    content = data['choices'][0]['delta'].get('content', '')
+                    print(content, end="", flush=True)
+                except: continue
+        print()
+    else:
+        print(f"對話失敗: {response.text}")
 
 def chat_execute(session_id, message):
     """執行聊天"""
@@ -200,6 +228,10 @@ def main():
     chat_parser = subparsers.add_parser("chat", help="進行對話")
     chat_parser.add_argument("session_id", help="會話 ID")
     chat_parser.add_argument("message", help="對話內容")
+    
+    # 直接串流聊天指令
+    raw_chat_parser = subparsers.add_parser("raw-chat", help="直接與 LM Studio 串流對話")
+    raw_chat_parser.add_argument("message", help="對話內容")
 
     args = parser.parse_args()
 
@@ -221,6 +253,8 @@ def main():
         ask_query(args.query, notebook_id=args.notebook)
     elif args.command == "chat":
         chat_execute(args.session_id, args.message)
+    elif args.command == "raw-chat":
+        raw_chat(args.message)
     else:
         parser.print_help()
 
