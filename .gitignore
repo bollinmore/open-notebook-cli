@@ -1,0 +1,5 @@
+notebook_data/
+surreal_data/
+__pycache__/
+.uv/
+openapi.json
