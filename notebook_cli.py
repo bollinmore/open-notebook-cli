@@ -3,10 +3,23 @@ import argparse
 import json
 import requests
 import sys
+import hashlib
 
 # 基礎 API 設定
 BASE_URL = "http://localhost:5055/api"
 LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
+
+def calculate_sha256(file_path):
+    """計算檔案的 SHA256 雜湊值"""
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(file_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        print(f"計算 SHA256 失敗 {file_path}: {e}")
+        return None
 
 def list_notebooks():
     """列出所有筆記本的 ID 與名稱"""
@@ -23,14 +36,32 @@ def list_notebooks():
     except Exception as e:
         print(f"連線錯誤: {e}")
 
-def upload_files(directory, notebook_id, enable_insights):
-    """上傳目錄下的檔案到指定筆記本"""
+def upload_files(directory, notebook_id, enable_insights, dry_run=False):
+    """上傳目錄下的檔案到指定筆記本，具備重複檢查功能"""
     url = f"{BASE_URL}/sources"
     extensions = ('.pdf', '.txt', '.md')
     
+    # 使用絕對路徑確保不論在哪執行都能找到備份目錄
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    BACKUP_DIR = os.path.join(script_dir, "notebook_data", "uploads")
+    
     if not os.path.exists(directory):
-        print(f"錯誤: 目錄 {directory} 不存在")
+        print(f"錯誤: 來源目錄 {directory} 不存在")
         return
+
+    # 建立備份檔案的 SHA256 映射表
+    backup_hashes = {}
+    if os.path.exists(BACKUP_DIR):
+        files_to_scan = [f for f in os.listdir(BACKUP_DIR) if os.path.isfile(os.path.join(BACKUP_DIR, f))]
+        if files_to_scan:
+            print(f"正在掃描備份目錄 ({len(files_to_scan)} 個檔案)...")
+            for b_file in files_to_scan:
+                b_path = os.path.join(BACKUP_DIR, b_file)
+                h = calculate_sha256(b_path)
+                if h:
+                    backup_hashes[b_file] = h
+    else:
+        print(f"提示: 找不到備份目錄 {BACKUP_DIR}，將無法進行重複檢查。")
 
     # 指定的 Transformation IDs
     TRANSFORMATION_IDS = [
@@ -43,10 +74,32 @@ def upload_files(directory, notebook_id, enable_insights):
     # 預設不執行，除非 enable_insights 為 True
     transformations = TRANSFORMATION_IDS if enable_insights else []
 
+    total_count = 0
+    uploaded_count = 0
+    skipped_count = 0
+    failed_count = 0
+
     for filename in os.listdir(directory):
         if filename.lower().endswith(extensions):
+            total_count += 1
             file_path = os.path.join(directory, filename)
             
+            # 檢查是否重複
+            local_hash = calculate_sha256(file_path)
+            if filename in backup_hashes:
+                if backup_hashes[filename] == local_hash:
+                    # 預設不顯示跳過的檔案
+                    skipped_count += 1
+                    continue
+            
+            if dry_run:
+                if filename in backup_hashes:
+                    print(f"[更新] {filename}")
+                else:
+                    print(f"[新檔案] {filename}")
+                uploaded_count += 1
+                continue
+
             print(f"正在上傳: {filename} (Insights: {'啟用' if enable_insights else '關閉'})...")
             
             try:
@@ -63,10 +116,22 @@ def upload_files(directory, notebook_id, enable_insights):
                     response = requests.post(url, data=data, files=files)
                     if response.status_code == 200:
                         print(f"成功: {filename} 已上傳。")
+                        uploaded_count += 1
                     else:
                         print(f"失敗: {filename}，狀態碼: {response.status_code}，回應: {response.text}")
+                        failed_count += 1
             except Exception as e:
                 print(f"上傳發生錯誤 {filename}: {e}")
+                failed_count += 1
+    
+    print("-" * 30)
+    print(f"上傳摘要 ({'模擬模式' if dry_run else '正式模式'}):")
+    print(f"  總處理檔案數: {total_count}")
+    print(f"  成功上傳數:   {uploaded_count}")
+    print(f"  跳過(重複):   {skipped_count}")
+    if failed_count > 0:
+        print(f"  失敗數量:     {failed_count}")
+    print("-" * 30)
 
 def clear_notebook(notebook_id):
     """清除指定筆記本內的所有 Source 並刪除實體檔案"""
@@ -209,6 +274,7 @@ def main():
     upload_parser.add_argument("dir", help="包含檔案的目錄路徑")
     upload_parser.add_argument("notebook_id", help="目標筆記本 ID")
     upload_parser.add_argument("--enable-insights", action="store_true", help="啟用自動產生 Insights (分析時間較長)")
+    upload_parser.add_argument("--dry-run", action="store_true", help="模擬上傳過程，不實際發送請求")
 
     # 清除指令
     clear_parser = subparsers.add_parser("clear", help="清除指定筆記本內的所有 Source")
@@ -240,7 +306,7 @@ def main():
     elif args.command == "status":
         get_status()
     elif args.command == "upload":
-        upload_files(args.dir, args.notebook_id, args.enable_insights)
+        upload_files(args.dir, args.notebook_id, args.enable_insights, args.dry_run)
     elif args.command == "clear":
         confirm = input(f"確定要清空筆記本 {args.notebook_id} 內的所有檔案嗎？(y/N): ")
         if confirm.lower() == 'y':
