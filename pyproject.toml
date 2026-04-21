@@ -2,5 +2,6 @@
 name = "open-notebook-cli"
 version = "0.1.0-alpha.2"
 dependencies = [
+    "python-dotenv>=1.2.2",
     "requests>=2.31.0",
 ]

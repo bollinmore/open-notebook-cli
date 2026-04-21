@@ -4,10 +4,20 @@ import json
 import requests
 import sys
 import hashlib
+from dotenv import load_dotenv
+
+# 載入 .env 檔案
+load_dotenv()
 
 # 基礎 API 設定
 BASE_URL = "http://localhost:5055/api"
 LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
+
+# 讀取模型設定，設定預設值作為備援
+DEFAULT_CHAT_MODEL = os.getenv("DEFAULT_CHAT_MODEL_ID", "model:jlozhpea95y964fq5tb0")
+DEFAULT_EMBEDDING_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL_ID", "")
+DEFAULT_TTS_MODEL = os.getenv("DEFAULT_TTS_MODEL_ID", "")
+DEFAULT_STT_MODEL = os.getenv("DEFAULT_STT_MODEL_ID", "")
 
 def calculate_sha256(file_path):
     """計算檔案的 SHA256 雜湊值"""
@@ -228,8 +238,8 @@ def search_query(query, notebook_id=None, limit=5):
 
 def ask_query(query, notebook_id=None):
     """直接詢問知識庫問題，修正結構以符合 API 要求並處理串流回應"""
-    # 使用系統註冊的語言模型 ID
-    model_id = "model:jlozhpea95y964fq5tb0"
+    # 使用系統註冊的語言模型 ID (優先使用環境變數設定的 DEFAULT_CHAT_MODEL)
+    model_id = DEFAULT_CHAT_MODEL
     payload = {
         "question": query,
         "strategy_model": model_id,
