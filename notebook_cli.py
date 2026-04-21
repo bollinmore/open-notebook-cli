@@ -28,11 +28,45 @@ def list_notebooks():
         if response.status_code == 200:
             notebooks = response.json()
             print(f"{'ID':<30} | {'Name'}")
-            print("-" * 50)
+            print("-" * 60)
             for nb in notebooks:
                 print(f"{nb['id']:<30} | {nb['name']}")
         else:
             print(f"無法取得筆記本列表，狀態碼: {response.status_code}")
+    except Exception as e:
+        print(f"連線錯誤: {e}")
+
+def list_models():
+    """列出所有已註冊的模型"""
+    try:
+        response = requests.get(f"{BASE_URL}/models")
+        if response.status_code == 200:
+            models = response.json()
+            print(f"{'ID':<35} | {'Provider':<10} | {'Type':<10} | {'Name'}")
+            print("-" * 80)
+            for m in models:
+                print(f"{m['id']:<35} | {m['provider']:<10} | {m['type']:<10} | {m.get('name', 'N/A')}")
+        else:
+            print(f"無法取得模型列表，狀態碼: {response.status_code}")
+    except Exception as e:
+        print(f"連線錯誤: {e}")
+
+def list_sources(notebook_id=None):
+    """列出來源，可指定筆記本 ID"""
+    try:
+        url = f"{BASE_URL}/sources"
+        if notebook_id:
+            url += f"?notebook_id={notebook_id}"
+        
+        response = requests.get(url)
+        if response.status_code == 200:
+            sources = response.json()
+            print(f"{'ID':<30} | {'Title'}")
+            print("-" * 60)
+            for s in sources:
+                print(f"{s['id']:<30} | {s.get('title', 'N/A')}")
+        else:
+            print(f"無法取得來源列表，狀態碼: {response.status_code}")
     except Exception as e:
         print(f"連線錯誤: {e}")
 
@@ -263,8 +297,11 @@ def main():
     parser = argparse.ArgumentParser(description="Open Notebook CLI")
     subparsers = parser.add_subparsers(dest="command")
 
-    # 列出筆記本指令
-    subparsers.add_parser("list", help="列出所有筆記本 ID")
+    # 列出指令
+    list_parser = subparsers.add_parser("list", help="列出不同標的 (models, notebooks, sources)")
+    list_parser.add_argument("--model", action="store_true", help="列出可用的模型")
+    list_parser.add_argument("--notebook", action="store_true", help="列出所有筆記本")
+    list_parser.add_argument("--source", help="指定筆記本 ID，列出其所有的 Source (若不指定則列出所有 Source)", nargs='?', const=True)
 
     # 系統狀態指令
     subparsers.add_parser("status", help="系統狀態")
@@ -302,7 +339,17 @@ def main():
     args = parser.parse_args()
 
     if args.command == "list":
-        list_notebooks()
+        if args.model:
+            list_models()
+        elif args.notebook:
+            list_notebooks()
+        elif args.source:
+            # 如果 args.source 是 True (即使用者只帶了 --source 沒給 ID)
+            nb_id = args.source if isinstance(args.source, str) else None
+            list_sources(nb_id)
+        else:
+            list_parser.print_help()
+            sys.exit(1)
     elif args.command == "status":
         get_status()
     elif args.command == "upload":
