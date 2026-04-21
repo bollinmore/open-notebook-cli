@@ -61,6 +61,21 @@ def list_models():
     except Exception as e:
         print(f"連線錯誤: {e}")
 
+def get_model_name_by_id(model_id):
+    """根據 Model ID 從 API 取得模型名稱，若失敗則回傳原 ID"""
+    if not model_id:
+        return "未知模型"
+    try:
+        response = requests.get(f"{BASE_URL}/models")
+        if response.status_code == 200:
+            models = response.json()
+            for m in models:
+                if m['id'] == model_id:
+                    return m.get('name', model_id)
+        return model_id
+    except:
+        return model_id
+
 def list_sources(notebook_id=None):
     """列出來源，可指定筆記本 ID"""
     try:
@@ -223,6 +238,7 @@ def get_status():
 
 def search_query(query, notebook_id=None, limit=5):
     """執行知識庫搜尋，支援筆記本篩選"""
+    print(f"🔍 使用模型: {get_model_name_by_id(DEFAULT_EMBEDDING_MODEL)}")
     payload = {"query": query, "limit": limit}
     # 若有指定 notebook_id，傳遞 context 參數以進行限制
     if notebook_id:
@@ -240,6 +256,7 @@ def ask_query(query, notebook_id=None):
     """直接詢問知識庫問題，修正結構以符合 API 要求並處理串流回應"""
     # 使用系統註冊的語言模型 ID (優先使用環境變數設定的 DEFAULT_CHAT_MODEL)
     model_id = DEFAULT_CHAT_MODEL
+    print(f"🤖 使用模型: {get_model_name_by_id(model_id)}")
     payload = {
         "question": query,
         "strategy_model": model_id,
@@ -296,6 +313,7 @@ def raw_chat(message):
 
 def chat_execute(session_id, message):
     """執行聊天"""
+    print(f"💬 使用模型: {get_model_name_by_id(DEFAULT_CHAT_MODEL)}")
     payload = {"session_id": session_id, "message": message, "context": {}}
     response = requests.post(f"{BASE_URL}/chat/execute", json=payload)
     if response.status_code == 200:
