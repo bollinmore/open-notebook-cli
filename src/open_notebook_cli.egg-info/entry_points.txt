@@ -1,0 +1,2 @@
+[console_scripts]
+notebook-cli = open_notebook.cli:main

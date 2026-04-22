@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+src/open_notebook/__init__.py
+src/open_notebook/cli.py
+src/open_notebook/utils.py
+src/open_notebook_cli.egg-info/PKG-INFO
+src/open_notebook_cli.egg-info/SOURCES.txt
+src/open_notebook_cli.egg-info/dependency_links.txt
+src/open_notebook_cli.egg-info/entry_points.txt
+src/open_notebook_cli.egg-info/requires.txt
+src/open_notebook_cli.egg-info/top_level.txt
+tests/test_cli.py
+tests/test_utils.py

@@ -1,7 +1,28 @@
 [project]
 name = "open-notebook-cli"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
     "python-dotenv>=1.2.2",
     "requests>=2.31.0",
+]
+
+[project.scripts]
+notebook-cli = "open_notebook.cli:main"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+open-notebook-cli = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/open_notebook"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
 ]

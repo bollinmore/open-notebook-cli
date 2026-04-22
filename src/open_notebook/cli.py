@@ -3,8 +3,8 @@ import argparse
 import json
 import requests
 import sys
-import hashlib
 from dotenv import load_dotenv
+from open_notebook.utils import calculate_sha256
 
 # 載入 .env 檔案
 load_dotenv()
@@ -18,18 +18,6 @@ DEFAULT_CHAT_MODEL = os.getenv("DEFAULT_CHAT_MODEL_ID", "model:jlozhpea95y964fq5
 DEFAULT_EMBEDDING_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL_ID", "")
 DEFAULT_TTS_MODEL = os.getenv("DEFAULT_TTS_MODEL_ID", "")
 DEFAULT_STT_MODEL = os.getenv("DEFAULT_STT_MODEL_ID", "")
-
-def calculate_sha256(file_path):
-    """計算檔案的 SHA256 雜湊值"""
-    sha256_hash = hashlib.sha256()
-    try:
-        with open(file_path, "rb") as f:
-            for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()
-    except Exception as e:
-        print(f"計算 SHA256 失敗 {file_path}: {e}")
-        return None
 
 def list_notebooks():
     """列出所有筆記本的 ID 與名稱"""

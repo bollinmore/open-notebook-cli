@@ -1,0 +1,6 @@
+- [ ] 針對 `cli.py` 中的 `main` 函式撰寫整合測試，覆蓋所有指令分支 (argparse logic)。
+- [ ] 補強 `upload_files` 的完整路徑分支測試（包含重複檔案與成功/失敗路徑）。
+- [ ] 補強 `ask_query` 的串流處理 (`iter_lines`) 的完整邊界測試。
+- [ ] 針對 `clear_notebook` 加入使用者互動測試（模擬 `input()`）。
+- [ ] 補強 `utils.py` 的錯誤處理測試（觸發檔案讀取 Exception）。
+- [ ] 考慮將 `cli.py` 拆解為更細緻的模組以提升可測試性。

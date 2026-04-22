@@ -19,57 +19,51 @@
 
 ## 使用方式
 
-所有指令透過 `uv run notebook_cli.py` 執行。
+建議直接透過 `uv run notebook-cli` 執行指令：
 
-### 1. 系統狀態與筆記本管理
-- **列出所有筆記本**:
+### 1. 系統狀態與清單指令
+- **列出標的 (筆記本/模型/來源)**:
   ```bash
-  uv run notebook_cli.py list
+  # 列出筆記本
+  uv run notebook-cli list --notebook
+  
+  # 列出所有模型
+  uv run notebook-cli list --model
+  
+  # 列出所有來源 (或指定筆記本的來源)
+  uv run notebook-cli list --source [notebook_id]
   ```
 - **檢查系統狀態**:
   ```bash
-  uv run notebook_cli.py status
+  uv run notebook-cli status
   ```
 
 ### 2. 檔案管理 (批次上傳與清除)
 - **批次上傳檔案**:
-  將檔案放置於指定目錄（支援 `.pdf`, `.txt`, `.md`）。
   ```bash
-  # 預設僅上傳與索引
-  uv run notebook_cli.py upload ./path/to/files "notebook_id"
-  
   # 上傳並自動執行 AI 分析 (Insights)
-  uv run notebook_cli.py upload ./path/to/files "notebook_id" --enable-insights
+  uv run notebook-cli upload ./path/to/files "notebook_id" --enable-insights
   ```
 - **清空筆記本**:
-  刪除指定筆記本內的所有來源與實體檔案。
   ```bash
-  uv run notebook_cli.py clear "notebook_id"
+  uv run notebook-cli clear "notebook_id"
   ```
 
 ### 3. 知識庫搜尋與提問
 - **搜尋知識庫**:
   ```bash
-  # 全域搜尋
-  uv run notebook_cli.py search "關鍵字"
-  
-  # 指定筆記本搜尋
-  uv run notebook_cli.py search "關鍵字" --notebook "notebook_id"
+  uv run notebook-cli search "關鍵字" --notebook "notebook_id"
   ```
 - **直接提問 (Ask)**:
   ```bash
-  # 全域提問
-  uv run notebook_cli.py ask "您的問題"
-  
-  # 指定筆記本提問
-  uv run notebook_cli.py ask "您的問題" --notebook "notebook_id"
+  uv run notebook-cli ask "您的問題" --notebook "notebook_id"
   ```
 
 ### 4. 聊天互動
 - **執行對話**:
   ```bash
-  uv run notebook_cli.py chat "session_id" "訊息內容"
+  uv run notebook-cli chat "session_id" "訊息內容"
   ```
 
 ---
-*註：若要取得筆記本 ID，請先使用 `list` 指令查詢。*
+*註：若要取得筆記本或模型 ID，請使用 `list` 指令查詢。*
