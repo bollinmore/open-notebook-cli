@@ -3,6 +3,13 @@ import argparse
 import json
 import requests
 import sys
+
+# 強制將 src 目錄加入 Python 路徑，解決 ModuleNotFoundError
+script_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(script_dir)
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
 from dotenv import load_dotenv
 from open_notebook.utils import calculate_sha256
 
@@ -18,6 +25,9 @@ DEFAULT_CHAT_MODEL = os.getenv("DEFAULT_CHAT_MODEL_ID", "model:jlozhpea95y964fq5
 DEFAULT_EMBEDDING_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL_ID", "")
 DEFAULT_TTS_MODEL = os.getenv("DEFAULT_TTS_MODEL_ID", "")
 DEFAULT_STT_MODEL = os.getenv("DEFAULT_STT_MODEL_ID", "")
+
+# 讀取 System Prompt
+DEFAULT_SYSTEM_PROMPT = os.getenv("DEFAULT_SYSTEM_PROMPT", "").strip()
 
 def list_notebooks():
     """列出所有筆記本的 ID 與名稱"""
@@ -245,8 +255,14 @@ def ask_query(query, notebook_id=None):
     # 使用系統註冊的語言模型 ID (優先使用環境變數設定的 DEFAULT_CHAT_MODEL)
     model_id = DEFAULT_CHAT_MODEL
     print(f"🤖 使用模型: {get_model_name_by_id(model_id)}")
+    
+    # 組合 System Prompt 與使用者的問題
+    full_question = query
+    if DEFAULT_SYSTEM_PROMPT:
+        full_question = f"{DEFAULT_SYSTEM_PROMPT}\n\n使用者問題：{query}"
+
     payload = {
-        "question": query,
+        "question": full_question,
         "strategy_model": model_id,
         "answer_model": model_id,
         "final_answer_model": model_id
@@ -302,7 +318,13 @@ def raw_chat(message):
 def chat_execute(session_id, message):
     """執行聊天"""
     print(f"💬 使用模型: {get_model_name_by_id(DEFAULT_CHAT_MODEL)}")
-    payload = {"session_id": session_id, "message": message, "context": {}}
+    
+    # 組合 System Prompt 與使用者的訊息
+    full_message = message
+    if DEFAULT_SYSTEM_PROMPT:
+        full_message = f"{DEFAULT_SYSTEM_PROMPT}\n\n使用者訊息：{message}"
+        
+    payload = {"session_id": session_id, "message": full_message, "context": {}}
     response = requests.post(f"{BASE_URL}/chat/execute", json=payload)
     if response.status_code == 200:
         print(json.dumps(response.json(), indent=2))

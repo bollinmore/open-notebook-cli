@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0-alpha.4] - 2026-04-22
+
+### Added
+- **System Prompt 支援**: 新增 `DEFAULT_SYSTEM_PROMPT` 環境變數，可在 `ask` 與 `chat` 指令前自動附加系統提示詞。
+- **穩定啟動入口**: 新增 `notebook-cli.sh` wrapper script，固定以 `uv run --no-editable notebook-cli` 啟動 CLI。
+- **封裝回歸測試**: 新增 `tests/test_packaging.py`，驗證 build backend 與 `src` package layout 設定。
+
+### Changed
+- **封裝設定明確化**: 補上 `build-system` 與 `requires-python`，固定使用 `hatchling` 建置並標明 Python 版本需求。
+- **macOS 執行說明更新**: README 改為建議使用 `uv sync --no-editable`，避免 editable install 在 macOS 上觸發 `ModuleNotFoundError: No module named 'open_notebook'`。
+
 ## [0.1.0-alpha.3] - 2026-04-22
 
 ### Added

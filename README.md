@@ -8,8 +8,12 @@
 
 1. **安裝依賴**:
    ```bash
-   uv sync
+   uv sync --no-editable
    ```
+
+   在 macOS 上，`uv` 的 editable 安裝可能會產生帶有 `hidden` flag 的 `.pth` 檔，
+   導致 `notebook-cli` 啟動時出現 `ModuleNotFoundError: No module named 'open_notebook'`。
+   若要避免這個問題，請固定使用 `--no-editable`。
 
 2. **確認 Docker 服務**:
    確保 `docker-compose.yml` 已啟動：
@@ -19,50 +23,58 @@
 
 ## 使用方式
 
-建議直接透過 `uv run notebook-cli` 執行指令：
+建議優先透過 repo 內的 wrapper script 執行：
+
+```bash
+./notebook-cli.sh --help
+```
+
+它會固定使用 `uv run --no-editable notebook-cli`，避免再次踩到 editable install 的匯入問題。
+
+若需要，也可以直接使用：
 
 ### 1. 系統狀態與清單指令
 - **列出標的 (筆記本/模型/來源)**:
   ```bash
   # 列出筆記本
-  uv run notebook-cli list --notebook
+  uv run --no-editable notebook-cli list --notebook
   
   # 列出所有模型
-  uv run notebook-cli list --model
+  uv run --no-editable notebook-cli list --model
   
   # 列出所有來源 (或指定筆記本的來源)
-  uv run notebook-cli list --source [notebook_id]
+  uv run --no-editable notebook-cli list --source [notebook_id]
   ```
 - **檢查系統狀態**:
   ```bash
-  uv run notebook-cli status
+  uv run --no-editable notebook-cli status
   ```
 
 ### 2. 檔案管理 (批次上傳與清除)
 - **批次上傳檔案**:
   ```bash
   # 上傳並自動執行 AI 分析 (Insights)
-  uv run notebook-cli upload ./path/to/files "notebook_id" --enable-insights
+  uv run --no-editable notebook-cli upload ./path/to/files "notebook_id" --enable-insights
   ```
 - **清空筆記本**:
   ```bash
-  uv run notebook-cli clear "notebook_id"
+  uv run --no-editable notebook-cli clear "notebook_id"
   ```
 
 ### 3. 知識庫搜尋與提問
 - **搜尋知識庫**:
   ```bash
-  uv run notebook-cli search "關鍵字" --notebook "notebook_id"
+  uv run --no-editable notebook-cli search "關鍵字" --notebook "notebook_id"
   ```
 - **直接提問 (Ask)**:
   ```bash
-  uv run notebook-cli ask "您的問題" --notebook "notebook_id"
+  uv run --no-editable notebook-cli ask "您的問題" --notebook "notebook_id"
   ```
 
 ### 4. 聊天互動
 - **執行對話**:
   ```bash
-  uv run notebook-cli chat "session_id" "訊息內容"
+  uv run --no-editable notebook-cli chat "session_id" "訊息內容"
   ```
 
 ---
