@@ -197,7 +197,7 @@ wheels = [
 
 [[package]]
 name = "open-notebook-cli"
-version = "0.1.0a3"
+version = "0.1.0a4"
 source = { editable = "." }
 dependencies = [
     { name = "python-dotenv" },

@@ -79,3 +79,38 @@
 
 ---
 *註：若要取得筆記本或模型 ID，請使用 `list` 指令查詢。*
+
+## AI 疊代提問工具
+
+專案內包含一個自動化腳本 `ai_iterative_ask.py`，它能根據 `notebook-cli` 的回答，自動思考並產生後續問題，達成多輪深入探討。
+
+### 設定方式
+
+1. **安裝依賴**:
+   ```bash
+   pip install python-dotenv requests
+   ```
+
+2. **配置環境變數**:
+   將 `.env.sample` 複製為 `.env` 並填入您的 NVIDIA NIM API Key：
+   ```bash
+   cp .env.sample .env
+   # 編輯 .env 填入 NVIDIA_NIM_API_KEY
+   ```
+
+### 執行疊代提問
+
+```bash
+python ai_iterative_ask.py "您的初始問題" [最大回合數]
+```
+
+**範例**:
+```bash
+python ai_iterative_ask.py "請分析這個知識庫的主要內容" 3
+```
+
+該腳本會：
+- 執行第一輪提問。
+- 將回答傳給 NVIDIA NIM AI，產生下一個相關問題。
+- 重複執行直到達到設定的回合上限。
+- 最後一輪自動產生完整總結。
