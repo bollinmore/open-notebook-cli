@@ -27,55 +27,59 @@ NIM_HEADERS = {
 
 def get_source_mapping():
     """
-    呼叫 notebook-cli list --source 取得 ID 與名稱的對照表。
+    抓取所有筆記本的來源，建立完整的 ID 與名稱對照表。
     """
     mapping = {}
     try:
-        result = subprocess.run(
-            ["./notebook-cli.sh", "list", "--source"],
+        # 1. 取得所有筆記本 ID
+        nb_result = subprocess.run(
+            ["./notebook-cli.sh", "list", "--notebook"],
             capture_output=True, text=True, check=True
         )
-        lines = result.stdout.strip().split('\n')
-        for line in lines:
-            # 匹配 ID | Title 格式。ID 可能是 'source:abc' 或 'abc'
-            if '|' not in line: continue
-            parts = line.split('|', 1)
-            raw_id = parts[0].strip()
-            title = parts[1].strip()
-            
-            # 建立多種 key 以確保匹配
-            clean_id = raw_id.replace("source:", "")
-            mapping[raw_id] = title
-            mapping[clean_id] = title
-            mapping[f"source:{clean_id}"] = title
-            
+        notebook_ids = [line.split('|')[0].strip() for line in nb_result.stdout.strip().split('\n') if '|' in line and 'ID' not in line and '---' not in line]
+
+        # 2. 針對每個筆記本取得來源
+        for nb_id in notebook_ids:
+            src_result = subprocess.run(
+                ["./notebook-cli.sh", "list", "--source", nb_id],
+                capture_output=True, text=True, check=True
+            )
+            for line in src_result.stdout.strip().split('\n'):
+                if '|' not in line or 'ID' in line or '---' in line: continue
+                parts = line.split('|', 1)
+                raw_id = parts[0].strip()
+                title = parts[1].strip()
+                
+                clean_id = raw_id.replace("source:", "")
+                mapping[raw_id] = title
+                mapping[clean_id] = title
+                mapping[f"source:{clean_id}"] = title
+                
         return mapping
-    except Exception as e:
-        print(f"警告：建立對照表時發生錯誤: {e}", file=sys.stderr)
+    except Exception:
         return {}
 
 def replace_source_ids(text, mapping):
     """
-    強效替換文本中的來源標記。
+    替換文本中的來源標記。若找不到名稱，則保留原始標記以確保準確性。
     """
     def replacer(match):
         full_match = match.group(0) # [source:ID] 或 [ID]
         content = match.group(1).strip() # source:ID 或 ID
         
-        # 移除 source: 前綴進行比對
+        # 嘗試找出乾淨的 ID
         clean_id = content.replace("source:", "")
         
-        # 嘗試從對照表尋找名稱
+        # 從對照表中尋找（嘗試三種可能的 key 組合）
         name = mapping.get(content) or mapping.get(clean_id) or mapping.get(f"source:{clean_id}")
         
         if name:
             return f"[{name}]"
-        return full_match # 找不到就維持原樣
+        # 找不到就維持原樣，不進行 AI 猜測
+        return full_match
 
-    # 匹配中括號內：
-    # 1. 以 source: 開頭的內容
-    # 2. 長度為 15-30 位的英數組合 (確保覆蓋 20 位 ID)
-    pattern = r'\[(source:[a-z0-9]+|[a-z0-9]{15,30})\]'
+    # 寬鬆匹配中括號內的標記，涵蓋 15-35 位元的英數 ID (可能帶 source: 前綴)
+    pattern = r'\[(source:[a-z0-9]+|[a-z0-9]{15,35})\]'
     return re.sub(pattern, replacer, text)
 
 def get_ai_next_step(history, turn, max_turns):
@@ -112,8 +116,6 @@ def call_notebook_cli(question, mapping):
             capture_output=True, text=True, check=True, timeout=120
         )
         return replace_source_ids(result.stdout.strip(), mapping)
-    except subprocess.CalledProcessError as e:
-        return f"錯誤：CLI 執行失敗\n{e.stderr}"
     except Exception as e:
         return f"錯誤：{str(e)}"
 
@@ -125,9 +127,9 @@ if __name__ == "__main__":
     initial_q = sys.argv[1]
     max_turns = int(sys.argv[2])
 
-    print("正在準備資料來源清單...")
+    print("正在掃描所有筆記本來源...")
     source_mapping = get_source_mapping()
-
+    
     history = []
     current_q = initial_q
 
@@ -138,9 +140,10 @@ if __name__ == "__main__":
         
         history.append({"q": current_q, "a": answer})
         if turn < max_turns:
-            print("AI 正在思考下一個問題...")
+            print("AI 正在思考下一輪問題...")
             current_q = get_ai_next_step(history, turn, max_turns)
         else:
             print("\n>>> 正在產生最終總結...")
-            print(f"\n--- 最終總結 ---\n{get_ai_next_step(history, turn, max_turns)}")
+            summary = get_ai_next_step(history, turn, max_turns)
+            print(f"\n--- 最終總結 ---\n{summary}")
             break

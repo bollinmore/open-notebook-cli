@@ -41,8 +41,8 @@ def list_notebooks():
                 print(f"{nb['id']:<30} | {nb['name']}")
         else:
             print(f"無法取得筆記本列表，狀態碼: {response.status_code}")
-    except Exception as e:
-        print(f"連線錯誤: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
 
 def list_models():
     """列出所有已註冊的模型"""
@@ -56,8 +56,8 @@ def list_models():
                 print(f"{m['id']:<35} | {m['provider']:<10} | {m['type']:<10} | {m.get('name', 'N/A')}")
         else:
             print(f"無法取得模型列表，狀態碼: {response.status_code}")
-    except Exception as e:
-        print(f"連線錯誤: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
 
 def get_model_name_by_id(model_id):
     """根據 Model ID 從 API 取得模型名稱，若失敗則回傳原 ID"""
@@ -90,6 +90,8 @@ def list_sources(notebook_id=None):
                 print(f"{s['id']:<30} | {s.get('title', 'N/A')}")
         else:
             print(f"無法取得來源列表，狀態碼: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
     except Exception as e:
         print(f"連線錯誤: {e}")
 
@@ -221,6 +223,8 @@ def clear_notebook(notebook_id):
                 print(f"成功刪除: {title}")
             else:
                 print(f"刪除失敗: {title}，狀態碼: {del_resp.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
     except Exception as e:
         print(f"執行清除時發生錯誤: {e}")
 
@@ -231,6 +235,8 @@ def get_status():
         env = requests.get(f"{BASE_URL}/credentials/env-status").json()
         print(f"Auth Status: {auth}")
         print(f"Env Status: {env}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
     except Exception as e:
         print(f"無法取得狀態: {e}")
 
@@ -242,13 +248,16 @@ def search_query(query, notebook_id=None, limit=5):
     if notebook_id:
         payload["context"] = {"notebook_id": notebook_id}
         
-    response = requests.post(f"{BASE_URL}/search", json=payload)
-    if response.status_code == 200:
-        results = response.json().get('results', [])
-        for i, res in enumerate(results):
-            print(f"[{i+1}] {res.get('title', '無標題')}")
-    else:
-        print(f"搜尋失敗: {response.text}")
+    try:
+        response = requests.post(f"{BASE_URL}/search", json=payload)
+        if response.status_code == 200:
+            results = response.json().get('results', [])
+            for i, res in enumerate(results):
+                print(f"[{i+1}] {res.get('title', '無標題')}")
+        else:
+            print(f"搜尋失敗: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
 
 def ask_query(query, notebook_id=None):
     """直接詢問知識庫問題，修正結構以符合 API 要求並處理串流回應"""
@@ -270,28 +279,31 @@ def ask_query(query, notebook_id=None):
     if notebook_id:
         payload["notebook_id"] = notebook_id
         
-    # 使用 stream=True 來處理串流
-    response = requests.post(f"{BASE_URL}/search/ask", json=payload, stream=True)
-    
-    if response.status_code == 200:
-        print("💡 系統思考中...", end="", flush=True)
-        for line in response.iter_lines():
-            if line:
-                line_str = line.decode('utf-8')
-                if line_str.startswith("data: "):
-                    try:
-                        data = json.loads(line_str[6:])
-                        # 顯示思考狀態
-                        if data.get("type") == "strategy":
-                            print(".", end="", flush=True)
-                        # 處理最終回答內容，使用 flush=True 強制即時輸出
-                        if data.get("type") == "answer":
-                            print(data.get("content", ""), end="", flush=True)
-                    except json.JSONDecodeError:
-                        continue
-        print() # 結束時換行
-    else:
-        print(f"提問失敗 (狀態碼 {response.status_code}): {response.text}")
+    try:
+        # 使用 stream=True 來處理串流
+        response = requests.post(f"{BASE_URL}/search/ask", json=payload, stream=True)
+        
+        if response.status_code == 200:
+            print("💡 系統思考中...", end="", flush=True)
+            for line in response.iter_lines():
+                if line:
+                    line_str = line.decode('utf-8')
+                    if line_str.startswith("data: "):
+                        try:
+                            data = json.loads(line_str[6:])
+                            # 顯示思考狀態
+                            if data.get("type") == "strategy":
+                                print(".", end="", flush=True)
+                            # 處理最終回答內容，使用 flush=True 強制即時輸出
+                            if data.get("type") == "answer":
+                                print(data.get("content", ""), end="", flush=True)
+                        except json.JSONDecodeError:
+                            continue
+            print() # 結束時換行
+        else:
+            print(f"提問失敗 (狀態碼 {response.status_code}): {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
 
 def raw_chat(message):
     """直接與 LM Studio 串流對話，繞過 Open Notebook 的 Orchestrator"""
@@ -300,36 +312,43 @@ def raw_chat(message):
         "messages": [{"role": "user", "content": message}],
         "stream": True
     }
-    response = requests.post(LM_STUDIO_URL, json=payload, stream=True)
-    if response.status_code == 200:
-        for line in response.iter_lines():
-            if line:
-                line_str = line.decode('utf-8').replace("data: ", "")
-                if line_str == "[DONE]": break
-                try:
-                    data = json.loads(line_str)
-                    content = data['choices'][0]['delta'].get('content', '')
-                    print(content, end="", flush=True)
-                except: continue
-        print()
-    else:
-        print(f"對話失敗: {response.text}")
+    try:
+        response = requests.post(LM_STUDIO_URL, json=payload, stream=True)
+        if response.status_code == 200:
+            for line in response.iter_lines():
+                if line:
+                    line_str = line.decode('utf-8').replace("data: ", "")
+                    if line_str == "[DONE]": break
+                    try:
+                        data = json.loads(line_str)
+                        content = data['choices'][0]['delta'].get('content', '')
+                        print(content, end="", flush=True)
+                    except: continue
+            print()
+        else:
+            print(f"對話失敗: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器 (LM Studio)，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
 
 def chat_execute(session_id, message):
     """執行聊天"""
     print(f"💬 使用模型: {get_model_name_by_id(DEFAULT_CHAT_MODEL)}")
-    
+
     # 組合 System Prompt 與使用者的訊息
     full_message = message
     if DEFAULT_SYSTEM_PROMPT:
         full_message = f"{DEFAULT_SYSTEM_PROMPT}\n\n使用者訊息：{message}"
-        
+
     payload = {"session_id": session_id, "message": full_message, "context": {}}
-    response = requests.post(f"{BASE_URL}/chat/execute", json=payload)
-    if response.status_code == 200:
-        print(json.dumps(response.json(), indent=2))
-    else:
-        print(f"對話失敗: {response.text}")
+    try:
+        response = requests.post(f"{BASE_URL}/chat/execute", json=payload)
+        if response.status_code == 200:
+            print(json.dumps(response.json(), indent=2))
+        else:
+            print(f"對話失敗: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Open Notebook CLI")
