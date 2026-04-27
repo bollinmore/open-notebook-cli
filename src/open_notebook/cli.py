@@ -95,32 +95,61 @@ def list_sources(notebook_id=None):
     except Exception as e:
         print(f"連線錯誤: {e}")
 
+def get_upload_dir():
+    """動態偵測上傳目錄路徑"""
+    # 1. 優先從環境變數讀取
+    env_path = os.getenv("OPEN_NOTEBOOK_UPLOADS_DIR")
+    if env_path and os.path.exists(env_path):
+        return env_path
+
+    # 2. 嘗試透過 docker inspect 自動偵測 (適用於 Agent 與 Docker 同主機)
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["docker", "inspect", "open_notebook", "--format", "{{ range .Mounts }}{{ if eq .Destination \"/app/data\" }}{{ .Source }}{{ end }}{{ end }}"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            docker_path = os.path.join(result.stdout.strip(), "uploads")
+            if os.path.exists(docker_path):
+                return docker_path
+    except:
+        pass
+
+    # 3. 備案：相對於當前腳本的預設路徑
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # 假設 cli.py 在 src/open_notebook/，專案根目錄在 ../../
+    project_root = os.path.dirname(os.path.dirname(script_dir))
+    default_path = os.path.join(project_root, "notebook_data", "uploads")
+    
+    return default_path if os.path.exists(default_path) else None
+
 def upload_files(directory, notebook_id, enable_insights, dry_run=False):
-    """上傳目錄下的檔案到指定筆記本，具備重複檢查功能"""
+    """上傳檔案，具備智能重複檢查與刪除更新功能"""
     url = f"{BASE_URL}/sources"
     extensions = ('.pdf', '.txt', '.md')
-    
-    # 使用絕對路徑確保不論在哪執行都能找到備份目錄
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    BACKUP_DIR = os.path.join(script_dir, "notebook_data", "uploads")
     
     if not os.path.exists(directory):
         print(f"錯誤: 來源目錄 {directory} 不存在")
         return
 
-    # 建立備份檔案的 SHA256 映射表
-    backup_hashes = {}
-    if os.path.exists(BACKUP_DIR):
-        files_to_scan = [f for f in os.listdir(BACKUP_DIR) if os.path.isfile(os.path.join(BACKUP_DIR, f))]
-        if files_to_scan:
-            print(f"正在掃描備份目錄 ({len(files_to_scan)} 個檔案)...")
-            for b_file in files_to_scan:
-                b_path = os.path.join(BACKUP_DIR, b_file)
-                h = calculate_sha256(b_path)
-                if h:
-                    backup_hashes[b_file] = h
+    # 1. 取得服務端現有的來源清單
+    existing_sources = {}
+    try:
+        response = requests.get(f"{BASE_URL}/sources?notebook_id={notebook_id}")
+        if response.status_code == 200:
+            for s in response.json():
+                # 使用標題(檔名)作為索引
+                existing_sources[s.get('title')] = s['id']
+    except Exception as e:
+        print(f"警告: 無法取得現有來源列表，將跳過比對邏輯。({e})")
+
+    # 2. 取得上傳目錄以進行雜湊比對
+    uploads_dir = get_upload_dir()
+    if uploads_dir:
+        print(f"🔍 偵測到服務端上傳目錄: {uploads_dir}")
     else:
-        print(f"提示: 找不到備份目錄 {BACKUP_DIR}，將無法進行重複檢查。")
+        print("⚠️ 無法定位服務端上傳目錄，將無法進行內容一致性檢查。")
 
     # 指定的 Transformation IDs
     TRANSFORMATION_IDS = [
@@ -130,67 +159,75 @@ def upload_files(directory, notebook_id, enable_insights, dry_run=False):
         "transformation:mtjxqc3zc4evy1ph73km",
         "transformation:zjc4edn6oxpq7xhr3752"
     ]
-    # 預設不執行，除非 enable_insights 為 True
     transformations = TRANSFORMATION_IDS if enable_insights else []
 
     total_count = 0
     uploaded_count = 0
     skipped_count = 0
+    updated_count = 0
     failed_count = 0
 
     for filename in os.listdir(directory):
         if filename.lower().endswith(extensions):
             total_count += 1
             file_path = os.path.join(directory, filename)
-            
-            # 檢查是否重複
             local_hash = calculate_sha256(file_path)
-            if filename in backup_hashes:
-                if backup_hashes[filename] == local_hash:
-                    # 預設不顯示跳過的檔案
+            
+            # --- 核心檢查邏輯 ---
+            if filename in existing_sources:
+                source_id = existing_sources[filename]
+                
+                # 如果能找到實體檔案，比對內容
+                is_same = False
+                if uploads_dir:
+                    remote_file_path = os.path.join(uploads_dir, filename)
+                    if os.path.exists(remote_file_path):
+                        remote_hash = calculate_sha256(remote_file_path)
+                        if local_hash == remote_hash:
+                            is_same = True
+                
+                if is_same:
+                    # print(f"  [跳過] {filename} (內容一致)")
                     skipped_count += 1
                     continue
-            
-            if dry_run:
-                if filename in backup_hashes:
-                    print(f"[更新] {filename}")
                 else:
-                    print(f"[新檔案] {filename}")
+                    # 內容不同或無法檢查內容，準備更新 (刪除舊的)
+                    if not dry_run:
+                        print(f"  [更新] {filename} (內容已變動)，正在刪除舊版本...")
+                        delete_url = f"{BASE_URL}/sources/{source_id}?delete_exclusive_sources=true"
+                        requests.delete(delete_url)
+                    updated_count += 1
+            
+            # --- 執行上傳 ---
+            if dry_run:
+                print(f"  [模擬] 準備上傳: {filename}")
                 uploaded_count += 1
                 continue
 
-            print(f"正在上傳: {filename} (Insights: {'啟用' if enable_insights else '關閉'})...")
-            
+            print(f"正在上傳: {filename}...")
             try:
                 with open(file_path, 'rb') as f:
                     files = {'file': (filename, f)}
                     data = {
-                        'type': 'upload',
-                        'title': filename,
-                        'embed': 'true',
+                        'type': 'upload', 'title': filename, 'embed': 'true',
                         'notebooks': json.dumps([notebook_id]),
                         'transformations': json.dumps(transformations)
                     }
-                    
                     response = requests.post(url, data=data, files=files)
                     if response.status_code == 200:
-                        print(f"成功: {filename} 已上傳。")
                         uploaded_count += 1
                     else:
-                        print(f"失敗: {filename}，狀態碼: {response.status_code}，回應: {response.text}")
+                        print(f"失敗: {filename}，狀態碼: {response.status_code}")
                         failed_count += 1
             except Exception as e:
-                print(f"上傳發生錯誤 {filename}: {e}")
+                print(f"上傳錯誤 {filename}: {e}")
                 failed_count += 1
     
     print("-" * 30)
-    print(f"上傳摘要 ({'模擬模式' if dry_run else '正式模式'}):")
-    print(f"  總處理檔案數: {total_count}")
-    print(f"  成功上傳數:   {uploaded_count}")
-    print(f"  跳過(重複):   {skipped_count}")
-    if failed_count > 0:
-        print(f"  失敗數量:     {failed_count}")
+    print(f"上傳摘要:")
+    print(f"  總處理: {total_count} | 上傳: {uploaded_count} | 更新: {updated_count} | 跳過: {skipped_count} | 失敗: {failed_count}")
     print("-" * 30)
+
 
 def clear_notebook(notebook_id):
     """清除指定筆記本內的所有 Source 並刪除實體檔案"""

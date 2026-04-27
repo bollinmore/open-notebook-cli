@@ -6,20 +6,35 @@ from open_notebook.cli import (
 )
 
 @patch('requests.post')
+@patch('requests.get')
 @patch('os.listdir')
 @patch('os.path.exists')
 @patch('builtins.open')
-def test_upload_files_success(mock_open, mock_exists, mock_listdir, mock_post, capsys):
+@patch('open_notebook.cli.calculate_sha256')
+@patch('open_notebook.cli.get_upload_dir')
+def test_upload_files_success(mock_get_upload_dir, mock_calc_sha, mock_open, mock_exists, mock_listdir, mock_get, mock_post, capsys):
     mock_exists.return_value = True
     mock_listdir.return_value = ["test.txt"]
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_post.return_value = mock_response
+    mock_calc_sha.return_value = "hash123"
+    mock_get_upload_dir.return_value = None # 測試環境不模擬實體上傳目錄
+    
+    # Mock requests.get (取得現有來源)
+    mock_get_resp = MagicMock()
+    mock_get_resp.status_code = 200
+    mock_get_resp.json.return_value = [] # 假設目前無現有檔案
+    mock_get.return_value = mock_get_resp
+
+    # Mock requests.post (上傳)
+    mock_post_resp = MagicMock()
+    mock_post_resp.status_code = 200
+    mock_post.return_value = mock_post_resp
 
     upload_files("./dummy_dir", "nb1", enable_insights=False)
     
     captured = capsys.readouterr()
-    assert "成功" in captured.out
+    assert "上傳: 1" in captured.out
+    assert "失敗: 0" in captured.out
+
 
 @patch('requests.delete')
 @patch('requests.get')
@@ -50,19 +65,33 @@ def test_list_notebooks_failure(mock_get, capsys):
     assert "無法取得筆記本列表" in captured.out
 
 @patch('requests.post')
+@patch('requests.get')
 @patch('os.listdir')
 @patch('os.path.exists')
-def test_upload_files_failure(mock_exists, mock_listdir, mock_post, capsys):
+@patch('open_notebook.cli.calculate_sha256')
+@patch('open_notebook.cli.get_upload_dir')
+def test_upload_files_failure(mock_get_upload_dir, mock_calc_sha, mock_exists, mock_listdir, mock_get, mock_post, capsys):
     mock_exists.return_value = True
     mock_listdir.return_value = ["test.txt"]
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-    mock_post.return_value = mock_response
+    mock_calc_sha.return_value = "hash123"
+    mock_get_upload_dir.return_value = None
+    
+    # Mock requests.get (取得現有來源)
+    mock_get_resp = MagicMock()
+    mock_get_resp.status_code = 200
+    mock_get_resp.json.return_value = []
+    mock_get.return_value = mock_get_resp
+
+    # Mock requests.post (失敗上傳)
+    mock_post_resp = MagicMock()
+    mock_post_resp.status_code = 500
+    mock_post.return_value = mock_post_resp
 
     upload_files("./dummy_dir", "nb1", enable_insights=False)
     
     captured = capsys.readouterr()
-    assert "失敗" in captured.out
+    assert "失敗: 1" in captured.out
+
 
 @patch('requests.get')
 def test_clear_notebook_api_failure(mock_get, capsys):
