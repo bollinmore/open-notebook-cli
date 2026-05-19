@@ -5,3 +5,5 @@ __pycache__/
 openapi.json
 .env
 .coverage
+.DS_Store
+chat.log
