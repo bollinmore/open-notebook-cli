@@ -229,11 +229,14 @@ def upload_files(directory, notebook_id, enable_insights, dry_run=False):
     print("-" * 30)
 
 
-def clear_notebook(notebook_id):
-    """清除指定筆記本內的所有 Source 並刪除實體檔案"""
-    list_url = f"{BASE_URL}/sources?notebook_id={notebook_id}"
+def clear_notebook(notebook_id=None):
+    """清除指定筆記本內的所有 Source 並刪除實體檔案。若無指定 ID，則清除所有 Source。"""
+    list_url = f"{BASE_URL}/sources"
+    if notebook_id:
+        list_url += f"?notebook_id={notebook_id}"
+    
     try:
-        # 1. 取得該筆記本內的所有來源
+        # 1. 取得來源列表
         response = requests.get(list_url)
         if response.status_code != 200:
             print(f"無法取得來源列表: {response.text}")
@@ -241,10 +244,11 @@ def clear_notebook(notebook_id):
         
         sources = response.json()
         if not sources:
-            print("該筆記本內沒有任何來源。")
+            print("沒有找到任何來源。")
             return
 
-        print(f"找到 {len(sources)} 個來源，準備開始刪除...")
+        target_desc = f"筆記本 {notebook_id}" if notebook_id else "系統內所有"
+        print(f"找到 {len(sources)} 個來源，準備開始從 {target_desc} 刪除...")
         
         # 2. 逐一刪除
         for source in sources:
@@ -264,6 +268,22 @@ def clear_notebook(notebook_id):
         print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
     except Exception as e:
         print(f"執行清除時發生錯誤: {e}")
+
+def delete_notebook(notebook_id):
+    """刪除筆記本及其相關連結 (API 會處理取消連結)"""
+    try:
+        url = f"{BASE_URL}/notebooks/{notebook_id}"
+        response = requests.delete(url)
+        if response.status_code == 200:
+            result = response.json()
+            print(f"成功刪除筆記本: {notebook_id}")
+            print(f"詳細資訊: {result.get('message', '無訊息')}")
+        else:
+            print(f"刪除筆記本失敗，狀態碼: {response.status_code}，回應: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"無法連線至後端伺服器，請確認服務是否已啟動。(錯誤詳細資訊: {e})")
+    except Exception as e:
+        print(f"刪除筆記本時發生錯誤: {e}")
 
 def get_status():
     """取得系統狀態"""
@@ -408,8 +428,12 @@ def main():
     upload_parser.add_argument("--dry-run", action="store_true", help="模擬上傳過程，不實際發送請求")
 
     # 清除指令
-    clear_parser = subparsers.add_parser("clear", help="清除指定筆記本內的所有 Source")
-    clear_parser.add_argument("notebook_id", help="要清空的筆記本 ID")
+    clear_parser = subparsers.add_parser("clear", help="清除筆記內容 (Source)")
+    clear_parser.add_argument("notebook_id", help="要清空的筆記本 ID (若輸入 'all' 或不指定則清空系統內所有 Source)", nargs='?', default=None)
+
+    # 刪除筆記本指令
+    del_nb_parser = subparsers.add_parser("delete-notebook", help="刪除指定筆記本")
+    del_nb_parser.add_argument("notebook_id", help="要刪除的筆記本 ID")
 
     # 搜尋指令
     search_parser = subparsers.add_parser("search", help="搜尋知識庫")
@@ -449,9 +473,17 @@ def main():
     elif args.command == "upload":
         upload_files(args.dir, args.notebook_id, args.enable_insights, args.dry_run)
     elif args.command == "clear":
-        confirm = input(f"確定要清空筆記本 {args.notebook_id} 內的所有檔案嗎？(y/N): ")
+        is_all = not args.notebook_id or args.notebook_id.lower() == 'all'
+        target = "系統內所有" if is_all else f"筆記本 {args.notebook_id}"
+        confirm = input(f"確定要清空 {target} 的所有筆記來源嗎？(y/N): ")
         if confirm.lower() == 'y':
-            clear_notebook(args.notebook_id)
+            clear_notebook(None if is_all else args.notebook_id)
+        else:
+            print("已取消操作。")
+    elif args.command == "delete-notebook":
+        confirm = input(f"確定要刪除筆記本 {args.notebook_id} 嗎？(這不會刪除檔案，但會移除連結)(y/N): ")
+        if confirm.lower() == 'y':
+            delete_notebook(args.notebook_id)
         else:
             print("已取消操作。")
     elif args.command == "search":
